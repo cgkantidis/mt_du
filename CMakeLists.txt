@@ -64,6 +64,16 @@ if("${CMAKE_BUILD_TYPE}" STREQUAL "MSAN" AND "${CMAKE_CXX_COMPILER_ID}" STREQUAL
   message(FATAL_ERROR "Memory sanitizer is not currently supported by gcc. Try clang instead.")
 endif()
 
+if("${CMAKE_BUILD_TYPE}" STREQUAL "Release")
+  include(CheckCXXCompilerFlag)
+  CHECK_CXX_COMPILER_FLAG("-march=native" COMPILER_SUPPORTS_MARCH_NATIVE)
+  if(COMPILER_SUPPORTS_MARCH_NATIVE)
+    set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -march=native")
+  endif()
+endif()
+
+add_library(argparse INTERFACE)
+target_include_directories(argparse INTERFACE ${CMAKE_SOURCE_DIR}/argparse/include)
 add_library(thread-pool INTERFACE)
 target_include_directories(thread-pool INTERFACE ${CMAKE_SOURCE_DIR}/thread-pool/include)
 find_package(Threads REQUIRED)
@@ -71,7 +81,7 @@ find_package(Threads REQUIRED)
 set(CMAKE_RUNTIME_OUTPUT_DIRECTORY ${CMAKE_BINARY_DIR})
 
 add_executable(mt_du mt_du.cpp)
-target_link_libraries(mt_du PRIVATE Threads::Threads)
+target_link_libraries(mt_du PRIVATE argparse thread-pool Threads::Threads)
 
 if(CMAKE_BUILD_TYPE STREQUAL Profile)
   target_link_options(mt_du PRIVATE "-pg")
