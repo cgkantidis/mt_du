@@ -115,10 +115,10 @@ Args parse_args(int argc, char const *const *argv) {
       .help("display the sizes in a human-readable format")
       .default_value(false)
       .implicit_value(true);
-  program.add_argument("-j")
-      .help("the number of threads to use")
-      .default_value(std::thread::hardware_concurrency())
-      .scan<'d', unsigned int>();
+  program.add_argument("-j", "--threads")
+         .help("number of threads to use")
+         .default_value(std::thread::hardware_concurrency())
+         .scan<'u', unsigned int>();
   program.add_argument("paths")
       .help("the list of paths for which to print their disk size")
       .nargs(argparse::nargs_pattern::at_least_one);
