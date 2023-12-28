@@ -41,14 +41,58 @@ elseif(CMAKE_CXX_COMPILER_ID STREQUAL "GNU")
     -Wuseless-cast)
 endif()
 
-add_compile_options(-Werror)
-# enable clang-tidy checks
-#set(CMAKE_CXX_CLANG_TIDY clang-tidy)
+#add_compile_options(-Werror)
 
-set(allowedBuildTypes Debug Release ASAN MSAN UBSAN TSAN Profile HeapProfile)
-set_property(CACHE CMAKE_BUILD_TYPE PROPERTY STRINGS "${allowedBuildTypes}")
-if(CMAKE_BUILD_TYPE AND NOT CMAKE_BUILD_TYPE IN_LIST allowedBuildTypes)
-  message(FATAL_ERROR "Invalid build type: ${CMAKE_BUILD_TYPE}")
+option(ENABLE_STATIC_CHECKS
+       "Enable the cppcheck and clang-tidy static code analyzers"
+       OFF)
+if(ENABLE_STATIC_CHECKS)
+  # enable clang-tidy and cppcheck checks
+  find_program(CMAKE_CXX_CLANG_TIDY NAMES clang-tidy)
+  if(CMAKE_CXX_CLANG_TIDY)
+    list(APPEND
+         CMAKE_CXX_CLANG_TIDY
+         "--use-color"
+         "--extra-arg=-Wno-unknown-warning-option")
+  endif()
+
+  find_program(CMAKE_CXX_CPPCHECK NAMES cppcheck)
+  if(CMAKE_CXX_CPPCHECK)
+    list(APPEND
+         CMAKE_CXX_CPPCHECK
+         "--language=c++"
+         "--std=c++20"
+         "--enable=all"
+         "--suppress=*:${CMAKE_BINARY_DIR}/*"
+         "--suppress=missingIncludeSystem"
+         "--report-progress"
+         "--template='{file}:{line}:{column}: {severity}: {message} [cppcheck-{id}]\\n{code}'"
+    )
+  endif()
+endif()
+
+set(AVAIL_BUILD_TYPES
+    Debug
+    Release
+    MinSizeRel
+    RelWithDebInfo
+    ASAN
+    MSAN
+    UBSAN
+    TSAN
+    Profile
+    HeapProfile)
+set_property(CACHE CMAKE_BUILD_TYPE PROPERTY STRINGS "${AVAIL_BUILD_TYPES}")
+# set the CMAKE_BUILD_TYPE to the default if no build type was specified
+set(DEFAULT_BUILD_TYPE "Release")
+if(NOT CMAKE_BUILD_TYPE AND NOT CMAKE_CONFIGURATION_TYPES)
+  message(STATUS "Setting build type to '${DEFAULT_BUILD_TYPE}'")
+  set(CMAKE_BUILD_TYPE
+      "${DEFAULT_BUILD_TYPE}"
+      CACHE STRING "Choose the type of build." FORCE)
+endif()
+if(CMAKE_BUILD_TYPE AND NOT CMAKE_BUILD_TYPE IN_LIST AVAIL_BUILD_TYPES)
+  message(FATAL_ERROR "Invalid build type: ${CMAKE_BUILD_TYPE}\nAvailable build types: ${AVAIL_BUILD_TYPES}")
 endif()
 
 set(CMAKE_CXX_FLAGS_DEBUG "-g -O0" CACHE STRING "Debug build" FORCE)
@@ -72,11 +116,25 @@ if("${CMAKE_BUILD_TYPE}" STREQUAL "Release")
   endif()
 endif()
 
-add_library(argparse INTERFACE)
-target_include_directories(argparse INTERFACE ${CMAKE_SOURCE_DIR}/argparse/include)
-add_library(thread-pool INTERFACE)
-target_include_directories(thread-pool INTERFACE ${CMAKE_SOURCE_DIR}/thread-pool/include)
+include(FetchContent)
+FetchContent_Declare(
+  argparse
+  GIT_REPOSITORY https://github.com/p-ranav/argparse.git
+  GIT_TAG        v3.0
+  OVERRIDE_FIND_PACKAGE
+)
+FetchContent_Declare(
+  thread-pool
+  GIT_REPOSITORY https://github.com/bshoshany/thread-pool.git
+  GIT_TAG        v4.0.0
+  OVERRIDE_FIND_PACKAGE
+)
+find_package(argparse REQUIRED)
+find_package(thread-pool REQUIRED)
 find_package(Threads REQUIRED)
+
+add_library(thread-pool INTERFACE)
+target_include_directories(thread-pool INTERFACE ${FETCHCONTENT_BASE_DIR}/thread-pool-src/include)
 
 set(CMAKE_RUNTIME_OUTPUT_DIRECTORY ${CMAKE_BINARY_DIR})
 
