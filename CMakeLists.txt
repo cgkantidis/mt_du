@@ -24,11 +24,7 @@ add_compile_options(
   -Wshadow
   -Wsign-conversion
   -Wunused
-  -pedantic
-  -Werror=sign-compare
-  -Werror=unused
-  -Werror=unused-but-set-variable
-  -Werror=unused-variable)
+  -pedantic)
 if(CMAKE_CXX_COMPILER_ID STREQUAL "Clang")
   add_compile_options(-fcolor-diagnostics)
 elseif(CMAKE_CXX_COMPILER_ID STREQUAL "GNU")
@@ -41,7 +37,7 @@ elseif(CMAKE_CXX_COMPILER_ID STREQUAL "GNU")
     -Wuseless-cast)
 endif()
 
-#add_compile_options(-Werror)
+add_compile_options(-Werror)
 
 option(ENABLE_STATIC_CHECKS
        "Enable the cppcheck and clang-tidy static code analyzers"
@@ -124,13 +120,11 @@ include(FetchContent)
 FetchContent_Declare(
   argparse
   GIT_REPOSITORY https://github.com/p-ranav/argparse.git
-  GIT_TAG        v3.0
   OVERRIDE_FIND_PACKAGE
 )
 FetchContent_Declare(
   thread-pool
   GIT_REPOSITORY https://github.com/bshoshany/thread-pool.git
-  GIT_TAG        v4.0.0
   OVERRIDE_FIND_PACKAGE
 )
 find_package(argparse REQUIRED)
