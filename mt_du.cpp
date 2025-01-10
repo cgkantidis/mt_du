@@ -1,19 +1,25 @@
 #include <BS_thread_pool.hpp>
 #include <argparse/argparse.hpp>
-
 #include <atomic>
 #include <cmath>
+#include <cstddef> // std::size_t
+#include <cstdint> // std::uintmax_t
 #include <filesystem>
+#include <functional> // std::ref, std::cref
 #include <iostream>
+#include <ranges>
+#include <stdexcept> // std::runtime_error
 #include <string_view>
-#include <vector>
+#include <system_error> // std::error_code
+#include <thread> // std::thread
+#include <vector> // std::vector
 
 namespace fs = std::filesystem;
 
 void get_rec_dir_size(
-    fs::path const path,
+    fs::path const &path,
     std::atomic<std::uintmax_t> &total_size,
-    BS::thread_pool &pool) {
+    BS::thread_pool<BS::tp::none> &pool) {
   std::error_code ec;
 
   // if the path is not to a directory, check if it's a regular file and return
@@ -34,15 +40,13 @@ void get_rec_dir_size(
     }
   }
 
-  for (auto dir_it = fs::directory_iterator(path, ec);
-       dir_it != fs::directory_iterator();
-       ++dir_it) {
+  for (auto const &item : fs::directory_iterator(path, ec)) {
     if (ec) {
       // std::cerr << ec.message() << " (" << path << ") (2)\n";
       break;
     }
 
-    auto const &status = dir_it->symlink_status(ec);
+    auto const &status = item.symlink_status(ec);
     if (ec) {
       // std::cerr << ec.message() << " (" << dir_it->path() << ") (3)\n";
       ec.clear();
@@ -51,7 +55,7 @@ void get_rec_dir_size(
 
     switch (status.type()) {
     case fs::file_type::regular: {
-      std::uintmax_t const file_size{dir_it->file_size(ec)};
+      std::uintmax_t const file_size{item.file_size(ec)};
       if (ec) {
         // std::cerr << ec.message() << " (" << dir_it->path() << ") (4)\n";
         ec.clear();
@@ -61,11 +65,9 @@ void get_rec_dir_size(
       break;
     }
     case fs::file_type::directory: {
-      pool.detach_task(std::bind(
-          get_rec_dir_size,
-          dir_it->path(),
-          std::ref(total_size),
-          std::ref(pool)));
+      pool.detach_task([path = item.path(), &total_size, &pool] {
+        get_rec_dir_size(std::cref(path), std::ref(total_size), std::ref(pool));
+      });
       break;
     }
     case fs::file_type::symlink:
@@ -87,13 +89,15 @@ public:
 
 private:
   friend std::ostream &operator<<(std::ostream &os, HumanReadable const &hr) {
+    static constexpr double two_to_ten = 1024.0;
+    static constexpr double ten_to_one = 10.0;
     int o{};
     auto mantissa = static_cast<double>(hr.m_size);
-    while (mantissa >= 1024.0) {
-      mantissa /= 1024.0;
+    while (mantissa >= two_to_ten) {
+      mantissa /= two_to_ten;
       ++o;
     }
-    os << std::ceil(mantissa * 10.0) / 10.0 << "BKMGTPE"[o];
+    os << std::ceil(mantissa * ten_to_one) / ten_to_one << "BKMGTPE"[o];
     return o != 0 ? (os << "B") : os;
   }
 };
@@ -105,47 +109,40 @@ public:
   std::vector<fs::path> paths;
 };
 
-Args parse_args(int argc, char const *const *argv) {
+int main(int argc, char const *const *argv) {
   argparse::ArgumentParser program("mt_du");
   program.add_argument("-H", "--human-readable")
       .help("display the sizes in a human-readable format")
       .default_value(false)
       .implicit_value(true);
   program.add_argument("-j", "--threads")
-         .help("number of threads to use")
-         .default_value(std::thread::hardware_concurrency())
-         .scan<'u', unsigned int>();
+      .help("number of threads to use")
+      .default_value(std::thread::hardware_concurrency())
+      .scan<'u', unsigned int>();
   program.add_argument("paths")
       .help("the list of paths for which to print their disk size")
       .nargs(argparse::nargs_pattern::at_least_one);
+
   try {
     program.parse_args(argc, argv);
   } catch (std::runtime_error const &err) {
     std::cerr << err.what() << '\n';
-    std::cerr << program;
-    std::exit(EXIT_FAILURE);
+    return 1;
   }
 
-  return {
+  Args args{
       program.get<bool>("--human-readable"),
       program.get<unsigned int>("-j"),
-      [](std::vector<std::string> const &paths_str) {
-        return std::vector<fs::path>{paths_str.begin(), paths_str.end()};
-      }(program.get<std::vector<std::string>>("paths"))};
-}
-
-int main(int argc, char const *const *argv) {
-  Args args = parse_args(argc, argv);
+      program.get<std::vector<std::string>>("paths")
+          | std::ranges::to<std::vector<fs::path>>()};
 
   std::vector<std::atomic<std::uintmax_t>> sizes(args.paths.size());
 
   BS::thread_pool pool(args.num_threads);
   for (std::size_t i = 0; i < args.paths.size(); ++i) {
-    pool.detach_task(std::bind(
-        get_rec_dir_size,
-        args.paths[i],
-        std::ref(sizes[i]),
-        std::ref(pool)));
+    pool.detach_task([path = args.paths[i], &size = sizes[i], &pool] {
+      get_rec_dir_size(std::cref(path), std::ref(size), std::ref(pool));
+    });
   }
   pool.wait();
 

@@ -6,7 +6,7 @@ project(mt_du
   LANGUAGES CXX)
 
 # set the C++ standard
-set(CMAKE_CXX_STANDARD 20)
+set(CMAKE_CXX_STANDARD 23)
 
 # generate the compile_commands.json
 set(CMAKE_EXPORT_COMPILE_COMMANDS ON)
